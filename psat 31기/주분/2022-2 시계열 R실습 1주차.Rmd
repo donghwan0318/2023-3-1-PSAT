@@ -1,0 +1,365 @@
+---
+title: "1주차 R실습"
+author: "Woong Bin Cho"
+date: '2022 09 13'
+output: html_document
+---
+
+# 시계열 자료분석팀 1주차 실습
+
+### 1. 패키지 로딩
+
+```{r, warning=FALSE}
+library(itsmr)
+library(MASS)
+library(tseries)
+library(nortest)
+library(forecast)
+rm(list=ls(all=TRUE))
+
+setwd("C:/Users/mobug/Desktop/시계열팀 역대 교안/2022-2학기 교안 준비") # 디렉토리는 TS-library.R가 있는 디렉토리로 변경!
+source("TS-library.R") # 백창룡 교수님이 짜신 소중한 코드...
+```
+
+### 2. 데이터 불러오기
+
+AirPassengers 데이터는 1949년부터 1960년까지의 국제항공 여객데이터로 크게 3가지 특징이 있습니다.<br/>
+<br/>
+1.국제항공 이용자수가 지속적으로 증가하며, 추세를 가집니다.<br/>
+2.변동성이 커지고 있습니다. 즉, 분산이 일정하지 않습니다.<br/>
+3.계절성을 가지고 있습니다. 12개월마다 반복되는 계절성이 뚜렷이 관측됩니다.
+
+```{r}
+data = AirPassengers
+plot(data)
+title("Monthly Airline Passenger Numbers(1949-1960)")
+```
+
+### 3. 분산 안정화
+
+분산을 안정화하는 세가지 방법, **로그변환, 제곱급 변환, Box-Cox 변환**을 살펴보겠습니다.
+
+```{r}
+plot(data^(1/2))
+title('제곱근 변환')
+```
+
+```{r}
+plot(log(data))
+title('로그 변환')
+```
+
+```{r}
+lambda = BoxCox.lambda(data) # 최적의 lambda값을 찾기 위한 함수
+data_bc = BoxCox(data,lambda)
+plot(data_bc)
+title('Box-Cox Transformation')
+```
+
+VST를 진행한 결과, 분산이 안정화된 것을 확인할 수 있습니다. 저는 Box-Cox 변환을 통해 분산을 안정화시킨 데이터로 이후 과정을 진행하겠습니다.
+
+### 4. 회귀
+
+분산을 안정화 시킨 후, 회귀 방법을 통해 추세와 계절성을 제거해보도록 하겠습니다. (단, 여기서 추세는 linear하다고 가정하겠습니다.)
+
+```{r}
+n = length(data_bc)
+x = seq(from=1,to=n,by=1) # Polynomial Regression
+mt = lm(data_bc ~ 1 + x)
+
+plot.ts(data_bc)
+title('regression')
+xa = as.vector(time(data_bc)) # time 함수를 통해 time값을 가져온다
+lines(xa, mt$fitted.values, col = 'red')
+```
+
+추정한 추세를 제거하겠습니다.
+
+```{r}
+del_trend_by_reg = data_bc - mt$fitted.values
+plot.ts(del_trend_by_reg)
+title('regression after trend delete')
+```
+
+추세가 제거된 것을 확인할 수 있습니다.
+
+이어서, 계절성을 제거해 보도록 하겠습니다.
+
+```{r}
+# Harmonic Regression
+n = length(del_trend_by_reg)
+
+t = 1:n
+f1 = 12 # f1 = [n/d] 값
+f2 = 24 # f2 = 2*f1
+f3 = 36 # f3 = 3*f1
+f4 = 48 # f4 = 4*f1
+costerm1 = cos(f1*2*pi/n*t)
+sinterm1 = sin(f1*2*pi/n*t)
+costerm2 = cos(f2*2*pi/n*t)
+sinterm2 = sin(f2*2*pi/n*t)
+costerm3 = cos(f3*2*pi/n*t)
+sinterm3 = sin(f3*2*pi/n*t)
+costerm4 = cos(f4*2*pi/n*t)
+sinterm4 = sin(f4*2*pi/n*t)
+out.lm1 = lm(del_trend_by_reg ~ 1 + costerm1 + sinterm1)
+out.lm2 = lm(del_trend_by_reg ~ 1 + costerm1 + sinterm1 + costerm2 + sinterm2)
+out.lm3 = lm(del_trend_by_reg ~ 1 + costerm1 + sinterm1 + costerm2 + sinterm2 + costerm3 + sinterm3)
+out.lm4 = lm(del_trend_by_reg ~ 1 + costerm1 + sinterm1 + costerm2 + sinterm2 + costerm3 + sinterm3 + costerm4 + sinterm4)
+```
+
+```{r}
+plot.ts(del_trend_by_reg)
+title("Monthly Airline Passenger Numbers 1949-1960")
+lines(xa, out.lm1$fitted, col="blue")
+lines(xa, out.lm2$fitted, col="red")
+legend(1959, -0.045, lty=c(1,1), col=c("blue","red"), c("k=1", "k=2"))
+```
+
+```{r}
+plot.ts(del_trend_by_reg)
+title("Monthly Airline Passenger Numbers 1949-1960")
+lines(xa, out.lm3$fitted, col="green")
+lines(xa, out.lm4$fitted, col="pink")
+legend(1959, -0.045, lty=c(1,1), col=c("green","pink"), c("k=3", "k=4"))
+```
+
+k=4일 때, 계절성을 잘 추정하는 것처럼 보이므로, 이때의 값으로 계절성을 제거하도록 하겠습니다.
+
+```{r}
+par(mfrow = c(1,2))
+plot.ts(data_bc) # 원본데이터 plot
+title("original data")
+
+del_trend_season_by_reg = del_trend_by_reg - out.lm4$fitted.values
+plot.ts(del_trend_season_by_reg)
+title('regression after trend/season delete')
+```
+
+원본 데이터보다는 추세와 계절성을 잘 제거한 모습이나, 2차 추세가 보이는 것 같아 추세가 완벽하게 제거되진 않아 보이며, 따라서 평균이 완벽하게 일정해보이진 않습니다.
+
+### 5 .평활
+
+평활을 통해서 추세와 계절성을 제거해 보겠습니다.
+우선 추세를 먼저 제거하겠습니다. q의 값은 우선 임의적으로 3, 7, 12로 설정한 후 진행해보겠습니다.
+```{r}
+ma3 = smooth.ma(data_bc,q=3)
+ma7 = smooth.ma(data_bc,q=7)
+ma12 = smooth.ma(data_bc,q=12)
+
+par(mfrow=c(1,3))
+plot.ts(data_bc)
+title('ma3')
+lines(xa,ma3,col='red')
+
+plot.ts(data_bc)
+title('ma7')
+lines(xa,ma7,col='red')
+
+plot.ts(data_bc)
+title('ma12')
+lines(xa,ma12,col='red')
+
+```
+
+q가 커질수록 더 smooth한 추세를 구할 수 있느 것을 확인할 수 있습니다.
+
+다음으로 지수평활화를 진행해보도록 하겠습니다. a값 역시 임의적으로 0.2, 0.4, 0.6으로 설정한 후 진행해보겠습니다.
+
+```{r}
+ex2 = smooth.exp(data_bc,0.2)
+ex4 = smooth.exp(data_bc,0.4)
+ex6 = smooth.exp(data_bc,0.6)
+
+par(mfrow=c(1,3))
+
+plot.ts(data_bc)
+lines(xa,ex2,col = 'red')
+title('a=0.2')
+
+plot.ts(data_bc)
+lines(xa,ex4,col = 'red')
+title('a=0.4')
+
+plot.ts(data_bc)
+lines(xa,ex6,col = 'red')
+title('a=0.6')
+
+```
+
+a가 커질수록 시계열 변화에 따른 예측값 변화가 크게 나타나는 것을 확인할 수 있습니다.
+
+이어서 CV를 통한 bandwidth selection을 한번 진행해보겠습니다.
+교안에서 q와 a의 선택(bandwidth selection)의 중요성을 설명드렸습니다! 이를 교차검증(Cross validation) 과정을 통해 최적의 parameter를 찾아보겠습니다.
+(CV는 백창룡 교수님의 2022학년도 1학기 시계열자료분석입문 수업 실습 코드에서 이미 짜여진 함수 ma.cv를 통해 진행하였습니다. 해당 함수가 궁금하시다면 TS-library.R를 열람해보시길 바랍니다.)
+
+```{r}
+# CV를 통한 bandwidth selection
+h.ma = optimize(f=ma.cv, interval=c(5, length(data_bc)/2), Y=data_bc, l=1, tol = .Machine$double.eps^0.25)
+out.ma = smooth.ma(data_bc, round(h.ma$minimum)) # 최적의 window 개수로 평활 진행
+
+plot.ts(data_bc)
+title('ma after CV')
+lines(xa,out.ma,col='red')
+```
+
+```{r}
+del_trend_by_smo = data_bc - out.ma
+plot.ts(del_trend_by_smo)
+title('smoothing after trend delete')
+```
+
+추세가 잘 제거된 것을 확인할 수 있습니다.
+
+이어서 계절성분을 분해해보도록 하겠습니다.
+
+```{r}
+season.avg = season(del_trend_by_smo,d=12) # season()은 계절성을 추정하는 함수
+plot.ts(del_trend_by_smo)
+lines(xa,season.avg,col='red')
+```
+
+계절성을 잘 추정한 것 같아 보이니, 이를 제거해주겠습니다.
+
+```{r}
+par(mfrow = c(1,2))
+plot.ts(data_bc) # 원본데이터 plot
+title("original data")
+
+del_trend_season_by_smo = del_trend_by_smo - season.avg
+plot.ts(del_trend_season_by_smo)
+title('smoothing after trend/season delete')
+```
+
+추제와 계절성을 제거하여 평균이 일정하게 된 것을 확인할 수 있습니다.
+
+교안에서는 추세와 계절성이 동시에 존재할 때, classical decomposition algorithm을 통해 진행한다고 설명드렸죠? 해당 과정을 직접 코드를 모두 짜서 진행해도 되나, 저는 백교수님이 짜주신 코드로 진행해보겠습니다. (백창룡! 백창룡! 백창룡!)
+
+```{r}
+out = classical(data_bc, d=12, order=1) # 백교수님이 짜신 함수 classical
+
+par(mfrow=c(2,2))
+plot.ts(data_bc)
+title("step1")
+lines(xa, out$m1, col="red") # MA filter를 통한 추세 추정
+
+plot.ts(data_bc-out$m1)
+title("step2")
+lines(xa, out$st, col="red") # 추세를 제거한 후 seasonal smoothing
+
+plot.ts(data_bc-out$st)
+title("step3")
+lines(xa, out$m, col="red") # 계절성을 제거한 후 다시 추세 추정
+
+plot.ts(data_bc)
+lines(xa, out$fit, col="red") # 추세와 계절성을 제거한 오차
+title("Final") 
+```
+
+```{r}
+data_classical = data_bc - out$st - out$m
+plot.ts(data_classical)
+```
+
+classical decomposition algorithm을 통해 계절성은 잘 제거된 것 같아보이나, 약간의 2차 추세가 보이는 것 같기도 합니다. (본 알고리즘에서는 계절성을 제거한 이후 추세를 OLS를 통해 다시 추정하였는데, 본 데이터는 OLS보다는 평활 방법으로 진행했던 결과가 더 좋아보이네요!)
+
+### 6. 차분
+
+정상화의 마지막으로 차분을 살펴보겠습니다. 차분함수는 diff 입니다.
+교안에서 추세와 계절성이 동시에 존재한다면, 계절차분을 먼저 진행한 후, p-1차 차분을 진행해야 한다고 설명드렸죠? 우선 계절차분부터 진행해보도록 하겠습니다.
+
+```{r}
+diff12 = diff(data_bc, lag = 12)
+a = 145-length(diff12)
+plot(x[a:144],diff12, type = 'l')
+title("seasonal differencing")
+```
+
+계절성이 잘 제거된 것을 확인할 수 있습니다.
+원래는 이어서 추세 제거를 위한 p-1차 차분을 진행해야 하나, 저희는 추세가 linear하다고 가정하였기에 해당 데이터에서는 더 이상 추세를 위한 차분은 진행할 필요가 없습니다. 위 그래프만 보아도 이미 추세 역시 제거되었음을 확인할 수 있습니다.
+
+혹시 1차차분을 진행한다면 어떻게 될까요?
+
+```{r}
+diff_trend_season = diff(diff12) # 1차차분
+a = 145-length(diff_trend_season)
+plot(x[a:144],diff_trend_season, type = 'l')
+title("differencing")
+```
+
+계절차분 이후, 1차차분을 진행했을 때가 훨씬 평균이 일정하게 보입니다.
+그러나 이렇듯 불필요한 차분을 추가적으로 진행한다면 "과대차분" 문제를 야기할 수 있으므로 주의해야합니다. (과대차분에 대한 내용은 3주차에서 만나요~!)
+
+### 7. 잔차 검정
+
+계절차분과 1차차분을 한 ACF 그래프를 그려보겠습니다.
+```{r}
+y = diff(diff12) # 계절성과 추세를 제거하였으니, y는 오차(잔차)
+Acf(y, lag.max=40, plot=TRUE)
+```
+ACF 그래프를 보았을 때, 시차 1,3,12,23,33,36 등 파란색 신뢰구간 밖에 ACF값들이 존재하므로 자기상관이 있다고 할 수 있습니다.
+
+잔차들의 자기상관 여부를 알아보기 위해, 'Ljung-Box' 검정을 진행해보겠습니다.
+```{r}
+Box.test(y,lag = 10, type = "Ljung-Box")
+```
+귀무가설 "자기상관이 없다"를 기각하므로 자기상관이 있다고 할 수 있습니다.
+
+교안에서 설명드린 것처럼, test() 함수를 이용해서 오차의 자기상관을 한번에 검정할 수도 있습니다.
+
+```{r}
+test(y)
+```
+
+5개의 검정 중 2개의 검정이 귀무가설 "오차(잔차)는 iid이다"를 기각합니다. 이러한 경우 분석자의 주관에 따라, 오차가 자기상관이 있다고 판단할 수도 있으며, 5개의 검정 중 과반수에 미치지 못하는 2개만이 자기상관이 있다고 하므로, 자기상관이 없다고 판단할수도 있습니다!
+
+다음으로 정규성 검정을 해보겠습니다.
+```{r}
+qqnorm(y)
+qqline(y, col="red")
+```
+QQ-plot을 보았을 때, 정규성을 살짝 위반하는 것처럼 보입니다! 자세한 검정을 위해 여러가지 검정을 해보겠습니다.
+```{r}
+jarque.bera.test(y)
+```
+```{r}
+shapiro.test(y)
+```
+```{r}
+library(nortest)
+ad.test(y)
+```
+```{r}
+cvm.test(y)
+```
+```{r}
+lillie.test(y)
+```
+
+모든 정규성에 대한 검정이 귀무가설을 기각합니다. 모든 검정의 귀무가설은 "잔차는 정규분포를 따른다"이므로, 이를 기각하게 됩니다. 따라서, 정규성을 위반한다고 볼 수 있습니다.
+
+다음으로 정상성검정을 해보겠습니다. 먼저 adf 검정(Augmented Dickey-Fuller입니다.
+```{r}
+adf.test(y)
+```
+p-value가 0.05보다 작으므로 대립가설 '정상시계열이다'를 채택합니다.
+
+이어서 kpss 검정도 진행해보겠습니다.
+```{r}
+kpss.test(y)
+```
+p-value가 0.05보다 크므로 귀무가설 '정상시계열이다'를 채택합니다.
+
+
+### [부록] Classical Decomposition를 진행할 수 있는 다른 함수
+백교수님의 함수 이외에도 decompose 함수를 사용하면 추세, 계절성, 오차를 한번에 분리할 수 있습니다.
+```{r}
+plot(decompose(data))
+```
+
+```{r}
+decom = decompose(data)
+acf(na.omit(decom$random), lag.max = 30)
+```
+
+자기상관이 있는 것을 확인할 수 있고, 이는 다음시간에 계속 알아보겠습니다.

@@ -1,0 +1,200 @@
+#[본인소속팀]본인이름_클린업_1주차_패키지
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("D:/psat 31기/1주차/문제")
+
+library(tidyverse)
+library(data.table)
+library(magrittr)
+library(corrplot)
+library(RColorBrewer)
+```
+
+## Chapter 1 : Data Preprocessing & EDA
+### 문제 1. R과 Python에서 각각 데이터를 불러온 뒤, 데이터의 구조를 파악하세요.
+```{r}
+insurance<-read.csv('insurance.csv')
+str(insurance)
+```
+```{r}
+head(insurance)
+```
+```{r}
+tail(insurance)
+```
+
+###문제2. 데이터에서 각 변수별로 unique한 값이 몇 개씩 존재하는지 파악해주세요.
+```{r}
+insurance %>% 
+  lapply(n_distinct)
+```
+
+
+
+###문제3. 문제 1과 문제 2에서 얻어낸 정보들을 바탕으로, 데이터에서 각 변수들이 범주형 변수인지 수치형 변수인지 판단해보고, 그 이유에 대해서 간략하게 서술해주세요.
+```{r}
+#수치형 변수
+insurance %>%  select_if(is.numeric) %>% names()
+
+```
+```{r}
+#수치형 변수 numeric으로 변환
+insurance <- insurance %>% 
+  mutate_if(is.numeric,as.numeric)
+```
+```{r}
+#범주형 변수
+insurance %>%  select_if(function(x) !is.numeric(x)) %>% names()
+```
+```{r}
+#범주형 변수 factor로 변환
+insurance<- insurance %>% 
+  mutate_if(function(x) !is.numeric(x),as.factor)
+```
+###문제4.  데이터 내에 결측치가 있는지 간단히 파악해보세요.
+```{r}
+#결측치 확인
+insurance %>% is.na() %>%  sum()
+```
+```{r}
+#데이터타입 변경 확인
+str(insurance)
+```
+
+###문제5. 데이터에 있는 ‘age’ 변수를 바탕으로 ‘age_group’이라는 범주형 파생변수를 생성해주세요.
+```{r}
+#조건에 따라 age_group열 생성성
+insurance<-insurance %>%
+  mutate(age_group=case_when(
+    age>=18 & age <=35 ~ 'young',
+    age>=36 & age <55 ~'senior',
+    TRUE ~'elder'
+  ))
+#결과 확인
+head(insurance,3)
+```
+
+
+
+###문제6. 데이터에서 수치형 변수들만을 사용하여, 수치형 변수들 간의 상관관계를 다음과 같은 상관관계 Plot을 통해 확인해주세요. 그리고 그 결과에 대해서 간단히 해석해주세요.
+```{r}
+#수치형변수 분리하기기
+num_vars <-c('age','bmi','charges')
+insurance_num<-insurance[,num_vars]
+#수치형변수 상관관계 matrix 만들기기
+num_corr<-cor(insurance_num)
+#그래프 그리기
+corrplot(num_corr,method='shade',order='AOE',main='Correlation of Numeric Variables',mar=c(2,2,2,2))
+
+```
+
+
+
+###문제7. 흡연 여부(smoker)에 따른 요금(charges)의 분포를 각각 비흡연자(smoker==no), 흡연자(smoker==yes)로 나누어서 다음과 시각화해주세요. 그 후, 그려진 plot을 통해 알 수 있는 점들을 간략하게 적어주세요.
+```{r}
+#색상 설정
+my_palette <- brewer.pal(2, "Pastel1")
+names(my_palette) <- c("no", "yes")
+#ggplot으로 그래프 그리기
+insurance %>%
+  ggplot(aes(x = charges, fill = smoker)) +
+  #histplot
+  geom_histogram(aes(y=..density..,colour=smoker),binwidth = 1200, alpha = 0.8) +
+  #density plot
+  geom_density(aes(colour=smoker),alpha=0.5)+
+  scale_fill_manual(values = my_palette) +
+  #그래프 분리
+  facet_wrap(~smoker, ncol = 2, scales = "free",drop=TRUE) +
+  #label설정
+  labs(x = "charges", y = "density") +
+  #테마설정
+  theme_classic()+
+  #제목설정
+  ggtitle('흡연 여부에 따른 요금 분포 비교')+
+  theme(plot.title=element_text(hjust=0.5,face='bold'))
+```
+
+흡연자에 비해 비흡연자는 보험료가 낮은 쪽에 많이 분포해 있다.
+평균적으로 비흡연자가 흡연자보다 보험료를 적게 낸다.
+
+###문제8. 나이 그룹(age_group)에 따른 평균 요금(charge)의 차이를 확인하기 위해 박스 플롯을 그려 다음과 같이 시각화해주세요. 그 후, 그림을 통해 확인할 수 있는 점을 간략하게 적어주세요.
+```{r}
+#색상 설정
+my_palette <- brewer.pal(3, "Pastel1")
+names(my_palette)<-c('elder','young','senior')
+#ggplot으로 그래프 그리기
+insurance %>% ggplot(aes(x=age_group,y=charges))+
+  #boxplot
+  geom_boxplot(aes(colour=age_group,fill=age_group),alpha=0.3,color='black')+
+  #범례 제거
+  guides(fill = FALSE)+
+  #테마설정
+  theme_classic()+
+  #제목설정
+  ggtitle("나이 그룹에 따른 평균 요금 비교")+
+  theme(plot.title=element_text(hjust=0.5,face='bold'))
+```
+
+elder,senior,young 순으로 중앙값이 커지는 것을 보아 나이가 많아질수록 보험료가 높아진다는 것을 시각적으로 확인할 수 있음.
+각 그룹에서 이상치가 보임, 특히 elder그룹에서 매우 많은 보험료를 지불하는 표본이 상대적으로 많을 것을 보아, 이 연령대에서는 보험료 차이가 크게 벌어지는 경우가 많을 것으로 볼 수 있음.
+## Chapter 2 : ANOVA(ANalysis Of Variance, 분산분석)
+###문제1. ANOVA가 어떤 모델인지 조사해본 후, ANOVA가 어떤 모델인지에 대해서 간단히 서술해주세요.
+ANOVA는 2개 이상의 그룹 간 차이가 있는 지를 평균값 차이를 비교하는 데 사용되는 모델
+
+  -ANOVA는 2개 이상의 그룹 간 차이가 있는 지를 평균값 차이를 비교하는 데 사용되는        모델로 그 차이가 유의한지 여부를 검정함.
+  ANOVA를 통해 알아내고자 하는 점은 그룹 간의 차이가 있는지 또 그 정도는 어느            정도인지를 파악하는 것임.
+  
+  -이 test의 귀무가설은 모든 그룹의 평균이 동일하다는 것이고 대립가설은 적어도 하나의    그룹은 다른 그룹과 동일하지 않다는 것임.
+  
+  -Z-test 혹은 T-test는 두 그룹 간의 차이만을 비교 할 수 있는데, 그에 따라 그 이상의     그룹들을 비교하기 위해서는 test를 여러번 반복해서 진행해야함. 이 경우, 여러번의        test를 수행하게 됨으로, 검정 결과에 대한 오류가 높아 질 수 있음.
+
+
+###문제2. ANOVA를 사용하여 나이 그룹(age_group) 간의 평균 요금(charges) 차이가 있는지를 검정해보고, 이를 ANOVA표를 통해 검정 결과를 해석하세요.
+```{r}
+#모델 만들기;ANOVA실행하기
+charges<-insurance[,'charges']
+agegroup<-insurance[,'age_group']
+model_aov<-aov(charges~agegroup);anova(model_aov)
+```
+1.age_group에 따라 charges에 유의미한 차이가 있음을 확인 할 수 있다.
+2.p-value가 매우 작음으로 귀무가설(age_group별 charges에차이가 없다.)를 기각할 수 있다.
+
+
+###문제3. ANOVA를 사용하여 나이 그룹(age_group) 간의 평균 BMI 값에 차이가 있는지를 검정해보고, 이를 ANOVA표를 통해 검정 결과를 해석하세요.
+```{r}
+bmi<-insurance[,'bmi']
+model_aov<-aov(bmi~agegroup);anova(model_aov)
+```
+1.age_group에 따라 bmi에 유의미한 차이가 있음을 확인 할 수 있다.
+2.p-value가 0.05보다 작음으로 유의수준 alpha=0.05에서서 귀무가설(age_group별 bmi에     차이가 없다.)를 기각할 수 있다.
+
+
+###문제4. ANOVA를 사용하여 지역(region) 간의 평균 나이(age)의 차이가 있는지를 검정해보고, 이를 ANOVA표를 통해 검정 결과를 해석하세요.
+```{r}
+age<-insurance[,'age']
+region<-insurance[,'region']
+model_aov<-aov(age~region);anova(model_aov)
+```
+1.region에 따라 age에 유의미한 차이가 없음을 확인 할 수 있다.
+2.p-value가 매우 높기 때문에 귀무가설(region별 age에 차이가 없다.)를 기각할 수 없다.
+###보너스 문제 2.
+ANOVA의 기본적인 가정은 다음과 같다.
+
+독립성 : 각 그룹이 서로 독립적이다.
+등분산성 : 각 그룹 내에서의 분산은 모두 동일하다.
+정규성 : 각 그룹 내에서의 관측치는 정규 분포를 따라야 한다.
+
+-독립성 가정은 실험을 통해 증명하기는 일반적으로 어렵지만, 실제 데이터를 수집할         대다수의 경우에 일반적으로 이 가정이 충족된다.
+
+-등분산성 가정은 박스플롯을 통해 대강 확인해 볼 수 있다. 박스 플롯에서 각 그룹의 박스의  크기가 비슷하다면 위 가정을 충족했다고 할 수 있다.
+
+-정규성 가정은 qqplot을 이용할 수 있다. 만약 정규분포를 따른다면 qqplot은 대략적으로    직선에 가깝게 나타난다.
+###보너스 문제 3.
+```{r}
+smoker<-insurance[,'smoker']
+model_aov<-aov(charges~agegroup+smoker+agegroup*smoker);anova(model_aov)
+```
+age_group과 smoker간에 유의 수준 0.05에서 유의한 상호작용 효과가 없다.
+age_group에 따라 charges에 유의한 차이가 있다.
+smoker에 따라 charges에 유의한 차이가 있다.

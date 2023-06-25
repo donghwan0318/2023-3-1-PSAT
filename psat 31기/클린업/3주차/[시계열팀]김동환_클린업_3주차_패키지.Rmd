@@ -1,0 +1,396 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(data.table)
+library(magrittr)
+library(corrplot)
+library(RColorBrewer)
+```
+###문제 1. 데이터를 불러온 후, 데이터의 구조를 파악하세요. 그 후, 데이터에서 각 변수들이 수치형 변수인지, 범주형 변수인지 판단해보고, 그 이유에 대해서 간단히 서술해 주세요.
+```{r ,warning=FALSE, message=FALSE}
+setwd('D:/psat 31기/3주차')
+dat<-read.csv('data_3.csv')
+dim(dat) #샘플 수 768 변수 9
+```
+
+```{r}
+#데이터 eda
+head(dat)
+```
+
+```{r}
+tail(dat)
+```
+
+```{r}
+str(dat) #데이터 정보 확인
+```
+
+```{r}
+summary(dat)
+```
+outcome은 범주형 변수이고, 나머지는 수치형 변수임.
+
+```{r}
+dat %>%  select_if(is.numeric) %>% names()
+```
+outcome도 코드 상에서는 수치형으로 표시 되지만, 결과를 1과 0으로 표현 한 것이기 때문에 범주형으로 보는 것이 맞음.
+###문제 2. 데이터에서 결측치가 존재하는지 확인한 후, 이를 다음과 같이 시각화해주세요.
+```{r}
+num_col<-c('Pregnancies', 'Glucose','BPressure','SThickness',
+          'Insulin','BMI','DiabetesPF','Age')
+for (col in num_col){#결측치 확인용용
+  count_na<-dat[col] %>% is.na() %>% sum()
+  cat(paste('The number of missing values in',col,'is',count_na,'\n'))
+}#결측치 확인인
+```
+```{r}
+library(VIM)
+aggr(dat,prop=FALSE,number=TRUE,#결측치 시각화
+     cex.axis=.7,col=c('lavender','lavenderblush'))
+```
+
+###문제 3. 데이터에서 ‘Outcome’ 변수는 추후에 사용할 예정이니 불러온 데이터 셋을 복사한 후에, 복사한 데이터프레임에서 ‘Outcome’ 변수는 제거해주세요.
+```{r}
+df<-copy(dat)
+df<-df[,num_col]
+head(df)#잘되었나 확인해보기
+```
+
+###문제 4. 데이터에서 발견한 결측치를 보간하기 전, 결측치가 발생한 변수에 대해서 시각화를 통해 다음과 같이 분포를 확인해주세요.
+```{r warning = FALSE, message = FALSE}
+missing_df<-df[,c(2:6)]
+df_gather <- gather(missing_df, key = 'variable', value = 'value')
+ggplot(df_gather,aes(x=value))+
+  geom_density(aes(colour=variable))+
+  facet_wrap(~variable,ncol=3,scales='free')+
+  theme_classic()+
+  theme(legend.position='none')
+```
+
+문제 5. KNN 알고리즘을 통하여 변수들에서 발생한 결측치를 보간할 예정입니다. 결측치를 KNN 알고리즘을 통하여 보간하고, 보간 후 결측치가 발생했던 변수에 대해 다시 한번 시각화를 진행하고, 시각화 결과를 통해 결측치 보간 전후로 각 변수들의 분포에 차이가 발생하는지 비교해보세요.
+```{r}
+imputed_df<-kNN(df,k=5,imp_var=FALSE)
+for (col in colnames(imputed_df)){#정상적으로 되었는지 확인인
+  count_na<-imputed_df[col] %>% is.na() %>% sum()
+  cat(paste('The number of missing values in',col,'is',count_na,'\n'))
+}
+```
+```{r}
+df_gather5 <- gather(imputed_df[,c(2:6)], key = 'variable', value = 'value')
+ggplot(df_gather5,aes(x=value))+
+  geom_density(aes(colour=variable))+
+  facet_wrap(~variable,ncol=3,scales='free')+
+  theme_classic()+
+  theme(legend.position='none')
+```
+
+SThickness (아마도 피부 두께)의 첨도가 살짝 더 커진거 같은데, 큰 차이는 없어보임.Insulin 최빈값이 더 커진것으로 보임. 아마도 KNN을 진행 할 때, 최빈값 근처의 결측치들은 다 최빈값으로 변환된게 아닌가 싶음.나머지는 거의 동일하거나 차이가 있더라도 미미해 보임.
+
+###(+ 보너스 문제 1) 문제 4와 5에서 결측치 보간을 진행할 때, 결측치 보간 전후로 결측치가 발생한 변수에 대해서 분포를 다시 확인하였습니다. 이렇게 결측치 보간 전후로 결측치 보간을 진행한 변수에대해서 분포를 시각화 하는 이유에 대해서 서술해주세요.
+
+결측치 보간은 어떤 알고리즘을 이용해 최대한 합리적으로 예측하는 것에 불과함함. 그렇기 때문에 보간 이후 시각화를 통해서, 예측한 값들이 추가됨에 따라 분포가 크게 변하는지, 혹은 이상치,비정상적인 값이 보이는지 확인하고 이상이 있다면 조치해야함.예를 들어 보간 이후 분포가 크게 변했다면, 그 방법에 따라 다르겠지만 불확실성이 큰 값들이 보간되어 발생했을 수 있다고 판단하고, 다른 보간 방법을 시도하거나, 보간된 값이 다른 데이터와 일관성이 있는지 검토하는 등의 추가적인 분석을 수행해야함. 혹은 결측치 보간 자체가 적절하지 않는다고 판단 된다면, 결측치를 제거하는 등의 방법도 가능함.
+
+###(+ 보너스 문제 2) 모델 기반의 결측치 보간법은 모델의 특성과 그 하이퍼파라미터에 따라 보간되는 값이 달라지게 됩니다. KNN 알고리즘의 하이퍼파라미터인 K를 조정하면서, K값에 따른 보간 성능을확인하고, 이에 대해서 해석해보세요.
+
+```{r}
+imputed_df3<-kNN(df,k=3,imp_var=FALSE)
+df_gather3 <- gather(imputed_df3[,c(2:6)], key = 'variable', value = 'value')
+ggplot(df_gather3,aes(x=value))+
+  geom_density(aes(colour=variable))+
+  facet_wrap(~variable,ncol=3,scales='free')+
+  theme_classic()+
+  theme(legend.position='none')
+```
+
+```{r}
+imputed_df10<-kNN(df,k=10,imp_var=FALSE)
+df_gather10 <- gather(imputed_df10[,c(2:6)], key = 'variable', value = 'value')
+ggplot(df_gather10,aes(x=value))+
+  geom_density(aes(colour=variable))+
+  facet_wrap(~variable,ncol=3,scales='free')+
+  theme_classic()+
+  theme(legend.position='none')
+```
+
+
+```{r}
+imputed_df100<-kNN(df,k=100,imp_var=FALSE)
+df_gather100 <- gather(imputed_df100[,c(2:6)], key = 'variable', value = 'value')
+ggplot(df_gather100,aes(x=value))+
+  geom_density(aes(colour=variable))+
+  facet_wrap(~variable,ncol=3,scales='free')+
+  theme_classic()+
+  theme(legend.position='none')
+```
+
+k를 변화시켰을 때, 영향을 받는 변수는 SThickness로 보인다. k가 커질 수록 적합이 잘되는 것으로 보이나, k=100일 때를 보면 알 수 있듯이 k가 너무 커지면 과적합되는 것을 알 수 있다.
+나머지 변수들을 크게 분포에 변화가 없다. 
+###문제 6. 결측치 보간 이후에도 결측치가 존재하는지 확인한 후, 이를 다음과 같이 시각화해주세요
+```{r}
+for (col in colnames(imputed_df)){#정상적으로 되었는지 확인
+  count_na<-imputed_df[col] %>% is.na() %>% sum()
+  cat(paste('The number of missing values in',col,'is',count_na,'\n'))
+}
+```
+
+결측치 없음
+```{r}
+aggr(imputed_df,prop=FALSE,number=TRUE,#결측치 시각화
+     cex.axis=.7,col=c('lavender','lavenderblush'))
+```
+###문제 7. 데이터에서 수치형 변수들만을 사용하여, 수치형 변수들 간의 상관관계를 다음과 같은 상관관계 Plot 을 통해 확인해주세요. 그리고 그 결과에 대해서 간단히 해석해주세요.
+```{r}
+imputed_df[,c(1,8,3,2,5,4,6,7)] %>% cor() %>% corrplot(mar=c(0,0,1,0),tl.cex=0.8,number.cex=1,method='number',main='Correlation of Numeric Variables',diag=FALSE)
+```
+
+상관관계가 높은 변수들->
+임신 횟수는 아무래도 나이가 많을 수록 커지는 경향이 있을 테고,
+포도당 농도를 조절하는게 인슐린이니까 양의 상관이 있을 것으로 예상했고, 실제로 그러함. 피부 두께와 BMI는 살찐사람의 피부 두께가 더 대체적으로 더 두꺼워서 그런 것같음. 
+나머지는 서로서로 적당히 상관을 가지고 있거나 관계가 거의 없음
+
+#문제 1. 항상 동일한 결과를 얻기 위하여 Seed를 고정해주세요 (Seed: 3031)
+```{r}
+set.seed(3031)
+```
+#문제 2. 데이터에서 변수들의 scale에 대한 영향을 제거하기 위해서 스케일링을 진행해주세요.
+```{r}
+scaled_df<-scale(imputed_df)
+```
+#문제 3. 요인분석을 진행하기 전, 요인 분석에 대해서 간단히 찾아본 후, 이에 대해서 서술해주세요.
+
+요인 분석은 다차원 데이터에서 변수들 사이의 상호 관계를 파악하고, 공통적인 요소들을 추출하는 분석 방법임. 주어진 변수들을 고차원 공간에서 저차원 공간으로 사상(mapping)하는 방식으로, 변수 간의 상관성을 최대한 보존하는 새로운 변수들을 생성함.
+
+요인 분석은 다음과 같은 목적으로 사용됨.
+
+변수의 차원 축소: 다수의 변수가 있을 때, 변수들 간의 상관관계를 고려하여 변수들을 줄이고 요약하여 분석을 용이하게 함.
+
+데이터의 구조 파악: 변수 간의 상호 관계를 파악하여 데이터의 구조를 이해하고, 데이터에 내재된 패턴이나 요인을 발견함.
+
+예측 모형 개발: 변수들 간의 상관성을 파악하여 예측 모형의 설명력을 향상시키고, 예측 정확도를 향상시킴.
+
+요인 분석은 주로 PCA(Principal Component Analysis)와 EFA(Exploratory Factor Analysis) 두 가지 방법으로 진행됨. PCA는 변수 간의 상관 관계를 이용하여 새로운 변수들을 추출하는 방법으로, 분산을 최대한 보존하는 새로운 변수를 생성함. EFA는 PCA와 유사하지만, 변수들의의 공통적인 요인을 공유하는 형태로 새로운 변수를 추출함. 
+
+#문제 4. factor=4, rotation='varimax'로 설정한 후, 요인분석을 진행해주세요.
+```{r}
+library(stats)
+factanal(scaled_df,factor=4,rotation='varimax')
+```
+
+#문제 5. 문제 4에서 진행한 요인분석을 바탕으로, 다음 문제들을 해결하세요.
+
+##- Factor=4로 설정하여 진행한 요인 분석이 유의한지 확인해주세요
+##(변수들을 4개의 factor로 표현하는 것이 유의한가?)
+##- Factor 1부터 Factor 4까지의 요인 적재량(Loading)을 확인하고,
+##각 Factor들이 변수들에서 어떤 요인을 의미하는지 서술해주세요.
+##- 앞서 확인한 요인 적재량을 기준으로, 해당 Factor를 가장 잘 설명할 수 있는 변수들을 각 Factor에서 하나씩 선택해주세요.
+```{r}
+df_mean<-dat %>% group_by(Pregnancies) %>% 
+  summarise(mean_outcome=mean(Outcome))
+coul<-brewer.pal(5,'Pastel1')
+barplot(df_mean$mean_outcome,names.arg = df_mean$Pregnancies,col=coul)
+```
+```{r}
+df_mean<-dat %>% group_by(Age) %>% 
+  summarise(mean_outcome=mean(Outcome))
+coul<-brewer.pal(5,'Pastel1')
+barplot(df_mean$mean_outcome,names.arg = df_mean$Age,col=coul)
+```
+
+
+1) p-value가 0.2임으로 alpha=0.05에서 4개의 factor로 표현하는 것이 유의함.
+
+2)factor1: BMI수치, factor2:혈당과 관련, factor3:나이+임신횟수,factor4:혈압
+
+3)
+
+factor1: BMI -> 0.971로 매우매우 높다.
+
+factor2: glucose -> glucose는 혈당을 의미하는데, 혈당이 높아지고나면 그것에 대한 피드백으로 insulin이 분비 된다. 그런 관점에서 insulin이 0.8, glucose가 0.7로 더 높긴하지만, 혈당이 높아진 이후 인슐린이 작용하는 것이므로, glucose를 선택하는 것이 더 적절해 보인다.
+
+factor3: Age->그래프를 보면 Pregnancies와 Age둘다 값이 클수록 발병률이 높은 것을 알 수 있지만, age가 Pregnancies보다는(?) 연속적인 변수이기 때문에 더 많은 정보를 담고 있다고 생각하고 각각0.755,0.715로 크게 차이가 나지 않는다. 또 일반적으로 임신 횟수보다는 아무래도 나이가 당뇨병 발병에 주요한 요인이지 않을까 싶어서 Age를 선택했다.
+
+factor4: BPressure -> 0.957로 매우매우 높다.
+
+#문제 6. 클러스터링을 위해 데이터에서 ‘BMI’, ‘Glucose’, ‘Age’, ‘BPressure’ 변수만 선택하여 클러스터링 용 데이터 셋을 만들어주세요.
+
+```{r}
+cluster_df<-scaled_df[,c(6,2,8,3)]
+cluster_df %>% head()#확인용
+```
+
+#문제 7. 클러스터링을 진행하기 전 최적의 클러스터 개수를 정하는 기준이 되는 Within Sum of Square(WSS)와 실루엣 계수(Silhouette Coefficient)가 무엇인지 알아본 후, 간단히 서술해주세요
+
+1)WSS(군집 내 제곱합): 각 클러스터의 중심과 데이터 간 거리를 계산하여 모든 클러스터에서 WSS를 계산함. 클러스터의 개수가 증가함에 따라 WSS는 감소함. 적절한 클러스터 갯수는 WSS가 감소하는 속도가 둔화하는 지점으로 결정함.
+
+2)Silhouette Coefficient(실루엣 계수): 실루엣 계수는 클러스터링의 성능을 평가하는 지표로, 클러스터의 각 데이터에 대해 자신이 속한 클러스터의 내부와 외부에 대해 유사도를 평가함. 실루엣 계수는 다음과 같이 계산함.
+
+a(i):클러스터 내 i번째 데이터와 같은 클러스터 내에 있는 모든 데이터와의 평균 거리
+
+b(i):i번째 데이터 포인트와 가장 가까운 다른 클러스터 내에 있는는 모든 데이터와의 평균 거리
+
+s(i): (b(i) - a(i)) / max(a(i), b(i))
+
+실루엣 계수의 범위는 -1~1이고, 값이 클수록 해당 데이터가 올바른 클러스터에 포함되있다는 것을
+의미함. 모델의 전반적인 성능 평가를 위해서는 모든 데이터 포인트의 평균 실루엣 계수를 계산함.
+적절한 클러스터 갯수는 실루엣 계수가 전반적으로 최대화 되는 지점으로 결정할 수 있음.
+
+#문제 8. K-means 클러스터링을 진행하기 전 fviz_nbcluster를 활용하여 Within Sum of Square플랏과 Silhouette Coefficient를 다음과 같이 시각화 한 후, 최적의 클러스터 개수를 선정해주세요.
+
+
+```{r}
+library(factoextra)
+library(gridExtra)
+p <- fviz_nbclust(cluster_df, FUNcluster = kmeans, method = 'wss',linecolor='aquamarine4') +
+  theme_classic()
+p2 <- fviz_nbclust(cluster_df, FUNcluster = kmeans, method = 'silhouette',linecolor='aquamarine4') +
+  theme_classic()
+grid.arrange(p,p2,ncol=2)
+```
+
+wss가 감속하는 속도가 둔화되는 지점인 동시에에 실루엣계수가 최대인 지점인 2가 최적의 클러스터 개수가 아닐까 싶음.
+
+#문제 9. k=3, iter.max=50, nstart=1 로 설정하여 클러스터링을 진행한 후, 다음과 같이 결과를 시각화해주세요.
+
+##- 색깔은 hcl.colors(3, palette = "cold")로 설정해주세요
+```{r}
+library(stats)
+km_fit<-kmeans(cluster_df,centers=3,iter.max = 50,nstart = 1)
+colors<-hcl.colors(3,palette='cold')
+fviz_cluster(km_fit, geom = "point", palette = colors,data=cluster_df)+
+  theme_bw()+ggtitle('K-means result')+
+  theme(plot.title = element_text(hjust = 0.5),legend.position = 'bottom')
+```
+
+#문제 9. Hierarchical 클러스터링 또한 마찬가지로 fviz_nbcluster를 활용하여 Within Sum of Square플랏과 Silhouette Coefficient를 다음과 같이 시각화 한 후, 최적의 클러스터 개수를 선정해주세요
+```{r}
+p <- fviz_nbclust(cluster_df, FUNcluster = hcut, method = 'wss',linecolor='aquamarine4') +
+  theme_classic()
+p2 <- fviz_nbclust(cluster_df, FUNcluster = hcut, method = 'silhouette',linecolor='aquamarine4')+
+  theme_classic()
+grid.arrange(p,p2,ncol=2)
+```
+
+kmeans와 마찬가지로 2가 적절해보인다.
+
+#문제 10. k=3, hc_func=’hclust’로 설정하여 클러스터링을 진행한 후, 다음과 같이 결과를 시각화해주세요.
+
+- 색깔은 hcl.colors(3, palette = "cold")로 설정해주세요.
+```{r}
+h_fit<-hcut(cluster_df,k=3,hc_func = 'hclust')
+fviz_cluster(h_fit, geom = "point", palette = colors,data=cluster_df)+
+  theme_bw()+ggtitle('Hieracrchical result')+
+  theme(plot.title = element_text(hjust = 0.5),legend.position = 'bottom')
+```
+
+#문제 11. K-means 클러스터링 결과와 Hierarchical 클러스터링의 실루엣 계수를 다음과 같이 시각화 한 후, 클러스터링 결과(각 데이터들끼리 잘 묶였는지)에 대해서 해석해주세요
+```{r}
+#k-means 클러스터링 시각화
+set.seed(3031)
+library(cluster)
+sil_k<-silhouette(km_fit$cluster,dist(cluster_df))
+fviz_silhouette(sil_k)
+```
+```{r}
+#hierarchical 클러스터링 시각화화
+sil_h<-silhouette(h_fit$cluster,dist(cluster_df))
+fviz_silhouette(sil_h)
+```
+
+3-클러스터 모델의 평균 실루엣 계수는 K,H순서로 0.25,0.24이다. 클러스터 1,2,3에 두 방법에서 음의 실루엣 계수를 가지고 있는 부분이 보이고, 아마도 잘못된 클러스터에 속해있는 것으로 보인다.만약 이 분야야에 관한 지식을 가지고 있는 사람이라면 그것을 바탕으로 이 클러스터링이 적절한지 판단해 볼 수 있겠지만,내 경우는 해당하지 않는다.그런 내 입장에서 단순하게 실루엣 계수만 본다면 그 정도가 낮다고 생각되서, 좋은 결과라고 보이진 않는다.
+
+#문제 12. K-means 클러스터링 결과에서 각 클러스터 별 중심점을 파악하고, 다음과 같이 각 클러스터 별 나이, BMI, 혈압, 글루코스에 대해서 비교하기 위해 박스 플랏을 그려보세요.
+```{r}
+df_clusteredk<-data.frame(cluster=km_fit$cluster,
+                         BMI=cluster_df[,'BMI'],BPressure=cluster_df[,'BPressure'],
+                         Age=cluster_df[,'Age'],Glucose=cluster_df[,'Glucose'])
+df_clusteredk <- gather(df_clusteredk,variable,value,-cluster)
+head(df_clusteredk)#확인용
+```
+
+```{r}
+ggplot(df_clusteredk, aes(x = variable, y = value, fill=factor(cluster))) +
+  geom_boxplot() +
+  scale_fill_brewer(palette='Pastel1')+
+  facet_wrap(.~variable, ncol=2,scales='free') +
+  labs(x = "Variable", y = "Value", title = "Cluster Comparison") +
+  theme_classic()+ggtitle('K-means 클러스터 별 나이, BMI, 혈압, 글루코스 비교')+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab('key')
+```
+
+#문제 13. Hierarchical 클러스터링 결과를 바탕으로 다음과 같이 덴드로그램을 그려보고, 각 클러스터 별 나이, BMI, 혈압, 글루코스에 대해서 비교하기 위해 박스 플랏을 그려보세요.
+```{r}
+set.seed(3031)
+fviz_dend(h_fit,show_labels=FALSE,cex=0.5,k=3,color_labels_by_k = FALSE,rect=TRUE)
+```
+
+```{r}
+df_clusteredh<-data.frame(cluster=h_fit$cluster,
+                         BMI=cluster_df[,'BMI'],BPressure=cluster_df[,'BPressure'],
+                         Age=cluster_df[,'Age'],Glucose=cluster_df[,'Glucose'])
+df_clusteredh <- gather(df_clusteredh,variable,value,-cluster)
+df_clusteredh %>% head()
+ggplot(df_clusteredh, aes(x = variable, y = value, fill=factor(cluster))) +
+  geom_boxplot() +
+  scale_fill_brewer(palette='Pastel1')+
+  facet_wrap(.~variable, ncol=2,scales='free') +
+  labs(x = "Variable", y = "Value", title = "Cluster Comparison") +
+  theme_classic()+ggtitle('K-means 클러스터 별 나이, BMI, 혈압, 글루코스 비교')+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab('key')
+```
+
+#(+ 보너스 문제 4) 앞서 제거한 “Outcome(당뇨병 여부)”와 클러스터링 결과들을 비교하기 위해 다음과 같이 시각화를 진행한 후, 앞서 확인한 클러스터링 결과에 대한 해석과 연관지어서 생각해보세요. (시각화를 진행하지 않고 해석만 해도 괜찮습니다.)
+```{r}
+dat1<-data.frame(outcome=dat[,'Outcome'],cluster=km_fit$cluster)
+k<-ggplot(dat1,aes(x=factor(cluster),fill=factor(outcome)))+
+  geom_bar(position = 'dodge',height=1.5)+
+  theme_classic()+
+  ggtitle('K-means 클러스터링 결과와 실제 발병 여부 비교')+
+  theme(plot.title = element_text(hjust = 0.5,size=10))+
+  labs(x='km_model.cluster',fill='실제 발병여부')
+dat2<-data.frame(outcome=dat[,'Outcome'],cluster=h_fit$cluster)
+h<-ggplot(dat2,aes(x=factor(cluster),fill=factor(outcome)))+
+  geom_bar(position = 'dodge')+
+  theme_classic()+
+  labs(x='hc_model.cluster',fill='실제 발병여부')+
+  ggtitle('K-means 클러스터링 결과와 실제 발병 여부 비교')+
+  theme(plot.title = element_text(hjust = 0.5,size=10))
+grid.arrange(k,h)
+```
+
+km,hc에서 각각 1,2 클러스터에 발병여부 0이 많이 포함 된 것이 보이고 발병여부 1과 비교했을 때 다른 클러스터에 비해 그 비율이 매우 높다. 앞의 실루엣 계수 그래프를 봐보면 km에선 1클러스터,hc에선 2클러스터의 실루엣계수가 평균적으로 큰것을 알 수 있는데, 이것이 들어난것으로 보인다. 이 두 클러스터들을 제외하면 나머지 클러스터들은 사실 상 0,1을 잘 구별해내지 못한다. 데이터가 0,1을 구별하는 형식이였는데, 그 입장에서 보면 그걸 3개로 억지로 분류한 느낌이 들기도한다. 
+
+#(+ 보너스 문제 5) 고차원에서 진행된 클러스터링 결과를 시각화하기 위해 오늘 사용한 fviz_cluster()는PCA를 통해 차원축소를 진행한 후, 클러스터링 결과를 2차원으로 표현합니다. 이처럼 클러스터링 결과의 시각화를 위해 사용되는 차원 축소 기법에는 TSNE가 존재합니다. TSNE가무엇인지에 대해서 살펴보고, Perplexity를 50으로 설정하여 다음과 같이 클러스터링 결과에 대해서 시각화를 진행해보세요.
+```{r}
+library(tsne)
+tsne_res<-tsne(cluster_df,perplexity = 50)
+#tsne_res는 x,y좌표,km_fit과 h_fit은 클러스터구분용
+tsne_df <- data.frame(tsne_res, km_fit = km_fit$cluster, h_fit = h_fit$cluster)
+#kmeans
+tsne1<-ggplot(tsne_df, aes(x=X1, y=X2, color=factor(km_fit))) +
+  geom_point(size = 1,show.legend = F) +
+  ggtitle('TSME를 통한 Kmean 클러스터링 결과 시각화') +
+  theme(plot.title = element_text(hjust = 0.5,size=10)) +
+  scale_color_manual(values = c( '#377EB8','#E41A1C','#4DAF4A'))+
+  labs(x = 'V1', y = 'V2')+
+  theme_bw()
+#Hierarchical
+tsne2<-ggplot(tsne_df, aes(x=X1, y=X2, color=factor(h_fit))) +
+  geom_point(size = 1,show.legend = F) +
+  ggtitle('TSME를 통한 Hierarchical 클러스터링 결과 시각화') +
+  theme(plot.title = element_text(hjust = 0.5,size=10)) +
+  scale_color_manual(values = c( '#E41A1C','#377EB8','#4DAF4A'))+
+  labs(x = 'V1', y = 'V2')+
+  theme_bw()
+grid.arrange(tsne1,tsne2,ncol=2,top='클러스터링 결과 시각화')
+```
+
+t-SNE란?
+tsne는 고차원 데이터를 저차원 공간으로 축소하는 비선형 차원 축소 알고리즘임. 이 알고리즘은 고차원 데이터의 각 샘플들을을 이웃하는 샘플들과의거리를 유지시키면서 저차원으로 매핑함. 거리를 유지하는데에는 유클리드 거리를 이용함. tsne는 시각화를 위해 널리 사용되고, 데이터의 복잡한 구조를 잘 보존하면서 저차원으로 임베딩 할 수 있음. 하지만 계산비용이 높아서 대규모 데이터셋에서는 시간이 오래 걸릴 수 있음. 또한, 초기값에 따라 결과가 달라질 수 있기 때문에 여러 번 시도하여 최적의 결과를 찾아내는 것이 일반적임.

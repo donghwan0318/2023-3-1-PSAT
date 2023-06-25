@@ -1,0 +1,370 @@
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("D:/psat 31기/1주차/문제")
+
+library(tidyverse)
+library(data.table)
+library(magrittr)
+library(corrplot)
+library(RColorBrewer)
+library(dplyr)
+```
+####Chapter 1 EDA & 결측치 보간
+
+```{r}
+#문제 1
+train<-read.csv("D:/psat 31기/주분/3주차/주제분석3주차패키지/train.csv")
+str(train)
+#dtype int & chr
+```
+```{r}
+head(train)
+```
+```{r}
+dim(train)
+#row 1460 col 81
+```
+```{r}
+#문제 2
+df = subset(train, select = -c(Id))
+#문제 3
+ggplot(df,aes(x=SalePrice))+
+  geom_histogram(fill='skyblue')+
+  scale_x_continuous(labels = scales::comma_format(),breaks= seq(0, 700000, by = 100000)) +
+  scale_y_continuous(labels = scales::comma_format(),breaks= seq(0, 200, by = 50)) +
+  theme_bw()
+```
+```{r}
+#문제4
+#4-1
+df_numeric <- select_if(df, is.numeric)
+numericVarNames <- colnames(df_numeric)
+corr<-abs(cor(df_numeric)[, "SalePrice"])
+#4-2
+corr<-sort(corr,decreasing=TRUE)
+corr_selected <- corr[corr >= 0.5]
+#4-3
+# corrplot 그리기
+par(omi=c(0,0,0,0), mar=c(0,0,0,0), plt=c(0.1,0.9,0.1,0.9))
+corrplot.mixed(cor(df_numeric[,names(corr_selected)]),lower="number",upper="circle",tl.pos="lt",cl.cex=0.8,number.cex=0.6 )
+```
+```{r}
+#문제5
+ggplot(df_numeric,aes(factor(OverallQual),SalePrice))+
+  scale_y_continuous(labels = scales::comma_format(),breaks= seq(100000, 700000, by = 100000)) +
+  geom_boxplot()+
+  labs(x="Overall Quality")+
+  theme_bw()
+```
+```{r}
+#문제6
+#6-1
+na_cols <- colSums(is.na(df)) > 0
+cat(paste(colnames(df)[na_cols], ":", colSums(is.na(df))[na_cols], "\n"))
+```
+```{r}
+#6-2
+df$FireplaceQu[is.na(df$FireplaceQu)] <- "None"
+df$FireplaceQu <- ifelse(df$FireplaceQu == "Ex", 5,
+                      ifelse(df$FireplaceQu == "Gd", 4,
+                      ifelse(df$FireplaceQu == "TA", 3,
+                      ifelse(df$FireplaceQu == "Fa", 2, 1))))
+
+```
+
+```{r}
+#6-3
+df$MiscFeature[is.na(df$MiscFeature)] <-"None"
+df$MiscFeature<-factor(df$MiscFeature)
+df$Alley[is.na(df$Alley)] <-"None"
+df$Alley<-factor(df$Alley)
+df$Fence[is.na(df$Fence)] <-"None"
+df$Fence<-factor(df$Fence)
+```
+
+```{r}
+#6-4
+df <- df %>%
+  group_by(Neighborhood) %>%
+  mutate(LotFrontage = ifelse(is.na(LotFrontage), median(LotFrontage, na.rm = TRUE), LotFrontage)) %>%
+  ungroup() %>%
+  mutate(LotFrontage = as.integer(LotFrontage))
+```
+
+```{r}
+#6-5
+df$GarageYrBlt <- ifelse(is.na(df$GarageYrBlt), df$YearBuilt, df$GarageYrBlt)
+```
+
+```{r}
+#6-6
+df$MasVnrArea <- ifelse(is.na(df$MasVnrArea), 0, df$MasVnrArea)
+```
+
+```{r}
+#6-7
+# Electrical 변수에서 가장 빈도가 높은 값 구함.
+mode_val <- names(which.max(table(df$Electrical)))
+## ifelse로 처리.
+df$Electrical <- ifelse(is.na(df$Electrical), mode_val, df$Electrical)
+```
+
+```{r}
+#문제7
+#7-1
+df <- subset(df, select = -c(Utilities))
+```
+
+```{r}
+#7-2
+df$Exterior2nd <- factor(df$Exterior2nd)
+df$Exterior1st <- factor(df$Exterior1st)
+df$MSZoning <- factor(df$MSZoning)
+df$Foundation <- factor(df$Foundation)
+df$Heating <- factor(df$Heating)
+df$RoofStyle <- factor(df$RoofStyle)
+df$RoofMatl <- factor(df$RoofMatl)
+df$LandContour <- factor(df$LandContour)
+df$BldgType <- factor(df$BldgType)
+df$HouseStyle <- factor(df$HouseStyle)
+df$Neighborhood <- factor(df$Neighborhood)
+df$Condition1 <- factor(df$Condition1)
+df$Condition2 <- factor(df$Condition2)
+df$SaleType <- factor(df$SaleType)
+df$SaleCondition <- factor(df$SaleCondition)
+df$LotConfig <- factor(df$LotConfig)
+df$MSSubClass <- factor(df$MSSubClass)
+df$MoSold <- factor(df$MoSold)
+```
+
+```{r}
+#7-3
+df$LotShape <- factor(df$LotShape, levels = c("Reg", "IR1", "IR2", "IR3"), ordered = TRUE)
+df$LotShape <- as.integer(df$LotShape)
+
+df$ExterCond <- factor(df$ExterCond, levels = c("Po", "Fa", "TA", "Gd", "Ex"), ordered = TRUE)
+df$ExterCond <- as.integer(df$ExterCond)
+
+df$ExterQual <- factor(df$ExterQual, levels = c("Po", "Fa", "TA", "Gd", "Ex"), ordered = TRUE)
+df$ExterQual <- as.integer(df$ExterQual)
+
+df$Functional <- factor(df$Functional, levels = c("Sal", "Sev", "Maj2", "Maj1", "Mod", "Min2", "Min1", "Typ"), ordered = TRUE)
+df$Functional <- as.integer(df$Functional)
+
+df$HeatingQC <- factor(df$HeatingQC, levels = c("Po", "Fa", "TA", "Gd", "Ex"), ordered = TRUE)
+df$HeatingQC <- as.integer(df$HeatingQC)
+
+df$CentralAir <- factor(df$CentralAir, levels = c("N", "Y"), ordered = TRUE)
+df$CentralAir <- as.integer(df$CentralAir)
+
+df$LandSlope <- factor(df$LandSlope, levels = c("Sev", "Mod", "Gtl"), ordered = TRUE)
+df$LandSlope <- as.integer(df$LandSlope)
+
+df$Street <- factor(df$Street, levels = c("Grvl", "Pave"), ordered = TRUE)
+df$Street <- as.integer(df$Street)
+
+df$PavedDrive <- factor(df$PavedDrive, levels = c("N", "P", "Y"), ordered = TRUE)
+df$PavedDrive <- as.integer(df$PavedDrive)
+
+df$KitchenQual <- factor(df$KitchenQual, levels = c("Po", "Fa", "TA", "Gd", "Ex"), ordered = TRUE)
+df$KitchenQual <- as.integer(df$KitchenQual)
+```
+
+```{r}
+#문제 8
+#문제4 다시 진행
+#4-1(8)
+df_numeric <- select_if(df, is.numeric)
+numericVarNames <- colnames(df_numeric)
+corr<-abs(cor(df_numeric)[, "SalePrice"])
+#4-2(8)
+corr<-sort(corr,decreasing=TRUE)
+corr_selected <- corr[corr >= 0.5]
+#4-3(8)
+# corrplot 그리기
+par(omi=c(0,0,0,0), mar=c(0,0,0,0), plt=c(0.1,0.9,0.1,0.9))
+corrplot.mixed(cor(df_numeric[,names(corr_selected)]),lower="number",upper="circle",tl.pos="lt",cl.cex=0.6,number.cex=0.5 )
+```
+```{r}
+#문제9
+library(randomForest)
+```
+
+```{r}
+#9-1
+rf_model <- randomForest(SalePrice ~ ., data = df_numeric, ntree = 100, importance = TRUE)
+imp <-data.frame(importance(rf_model, type = 1))
+imp$name<-rownames(imp)
+imp_sorted <- imp[order(-imp[,1]), ]
+ggplot(imp_sorted[0:20,],aes(y=reorder(name,X.IncMSE),x=X.IncMSE,fill=X.IncMSE))+
+  geom_bar(stat='identity',show.legend=FALSE)+
+  scale_fill_gradient(low='navy',high='skyblue')+
+  xlab("Feature importance")+
+  ylab("Variables")+
+  theme_bw()
+```
+```{r}
+#9-2
+ggplot(df,aes(x=Neighborhood,y=SalePrice))+
+  geom_bar(stat='identity',fill='skyblue')+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5))
+```
+
+####Chapter 2 FE
+```{r}
+#문제1
+#1-1
+df$TotBathrooms <- df$FullBath*1+df$HalfBath*0.5
+```
+
+```{r}
+#1-2
+ggplot(df,aes(x=TotBathrooms,y=SalePrice))+
+  geom_point(color='blue')+
+  geom_smooth(method='lm',color='black')+
+  scale_y_continuous(labels = scales::comma_format(),breaks= seq(0, 700000, by = 100000))+
+  scale_x_continuous(labels = scales::comma_format(),breaks= seq(0, 4, by = 0.5))+
+  theme_bw()
+```
+
+```{r}
+#문제2
+#2-1
+df$Remod <- ifelse(df$YearBuilt == df$YearRemodAdd, 0, 1)
+```
+
+```{r}
+#2-2
+df$Age<-df$YrSold-df$YearRemodAdd
+```
+
+```{r}
+#2-3
+ggplot(df,aes(x=Age,y=SalePrice))+
+  geom_point(color='blue')+
+  geom_smooth(method='lm',color='black')+
+  scale_y_continuous(labels = scales::comma_format(),breaks= seq(0, 700000, by = 100000))+
+  theme_bw()
+```
+```{r}
+#2-4
+df$isNew <-ifelse(df$YrSold == df$YearBuilt,1,0)
+```
+
+```{r}
+#2-5
+df$YrSold<-as.factor(df$YrSold)
+```
+
+```{r}
+#문제3
+df$TotalSqFeet<-df$GrLivArea+df$TotalBsmtSF
+#3-1
+ggplot(df,aes(x=TotalSqFeet,y=SalePrice))+
+  geom_point(color='blue')+
+  geom_smooth(method='lm',color='black')+
+  scale_y_continuous(labels = scales::comma_format(),breaks= seq(0, 800000, by = 100000))+
+  theme_bw()
+```
+```{r}
+#문제4
+df <- subset(df, select = -c(YearRemodAdd, GarageYrBlt, GarageArea, GarageCond, TotalBsmtSF, BsmtFinSF1))
+```
+####Chapter 3 Modeling
+```{r}
+#문제1
+#1-1
+numericVarNames <- setdiff(numericVarNames, c('MSSubClass', 'MoSold', 'YrSold', 'SalePrice', 'OverallQual', 'OverallCond'))
+numericVarNames <- setdiff(numericVarNames,c('YearRemodAdd','GarageYrBlt','GarageArea','GarageCond','TotalBsmtSF','BsmtFinSF1'))
+numericVarNames <- c(numericVarNames, "Age", "TotBathrooms", "TotalSqFeet")
+```
+
+```{r}
+#1-2
+numericDF <- df[, numericVarNames]
+```
+```{r}
+#1-3
+factorVarNames <- setdiff(colnames(df), numericVarNames)
+factorDF <- df[, factorVarNames, drop = FALSE]
+```
+
+```{r}
+#1-4
+factorDF <- subset(factorDF, select = -SalePrice)
+```
+
+```{r}
+#문제2
+#2-1
+library(moments)
+skews <- sapply(numericDF, skewness)
+ 
+# 절대값이 0.8 이상인 변수 로그 변환
+log_vars <- names(numericDF)[abs(skews) >= 0.8]
+for (var in log_vars) {
+     numericDF[[var]] <- log1p(numericDF[[var]])
+}
+```
+```{r}
+#문제3
+library(caret)
+preprocessDF<-preProcess(numericDF,method=c('center','scale'))
+preprocessDF<-data.frame(predict(preprocessDF,numericDF))
+```
+```{r}
+#4
+factorDF <- factorDF[, sapply(factorDF, function(x) length(levels(x)) > 2)]
+modelDF <- model.matrix(~., factorDF)
+```
+
+```{r}
+#4-1
+dummy_sum <- apply(modelDF, 2, sum)
+modelDF <- modelDF[, dummy_sum >= 10]
+```
+
+```{r}
+#5
+combinedDF <- cbind(preprocessDF, modelDF)
+```
+
+```{r}
+#문제6
+#6-1
+skewness(train$SalePrice)
+```
+```{r}
+#6-2
+qqnorm(train$SalePrice) ; qqline(train$SalePrice)
+```
+
+```{r}
+#6-3
+qqnorm(log(train$SalePrice)) ; qqline(log(train$SalePrice))
+```
+```{r}
+#6-4
+label = log(train$SalePrice)
+```
+
+```{r}
+#7
+library(glmnet)
+cv_fit<-cv.glmnet(x=as.matrix(combinedDF),y=label,lambda = seq(1,0.000001,by=-0.01),alpha=0)
+plot(cv_fit)
+```
+```{r}
+#7-3
+cv_fit$lambda.min
+```
+```{r}
+#7-4
+cv_fit<-glmnet(x=as.matrix(combinedDF),y=label,lambda = 0.07,alpha=0)
+coef(cv_fit)
+```
+
+
+
+

@@ -1,0 +1,252 @@
+---
+title: "2주차 R실습"
+author: "Woong Bin Cho"
+date: '2022 09 20 '
+output: html_document
+---
+
+# 시계열 자료분석팀 2주차 실습
+
+### 1. 패키지 로딩
+
+```{r}
+library(itsmr)
+library(MASS)
+library(tseries)
+library(nortest)
+library(forecast)
+```
+
+### 2. ACF & PACF
+
+지난 실습에서 사용했던 AirPassengers 데이터의 ACF와 PACF를 확인해보도록 하겠습니다.
+
+```{r}
+acf(AirPassengers)
+```
+
+
+```{r}
+pacf(AirPassengers)
+```
+
+높은 자기상관을 갖는 것을 확인할 수 있습니다.
+
+#### 2-1. AR & MA ACF/PACF
+
+교안에서 설명드린 자기회귀모형(AR 모형)과 이동평균모형(MA 모형)을 직접 적합해보기에 앞서, 각 모형을 따르는 데이터들의 ACF와 PACF를 먼저 살펴보겠습니다.
+arima.sim()함수를 사용하면 AR, MA과정을 따르는 데이터를 생성할 수 있습니다.
+데이터를 직접 생성하여 ACF와 PACF를 확인해 보겠습니다.
+먼저 AR(1) 모형의 ACF/PACF를 살펴보겠습니다.
+```{r}
+AR_1 = arima.sim(model = list(order = c(1,0,0), ar = c(0.5)), n = 1000, mean = 5) # 계수가 0.5인 AR(1) 모형을 따르는 데이터 1000개 생성 / AR(1)의 계수는 임의로 0.5로 지정
+plot(AR_1, main = 'AR(1)')
+```
+
+
+```{r}
+acf(AR_1, main = 'ACF of AR(1)')
+```
+
+
+```{r}
+pacf(AR_1, main = 'PACF of AR(1)')
+```
+
+교안에서 설명드린 대로 ACF는 지수적으로 감소하고, PACF는 p+1차부터 절단, 즉  시차 2부터 절단된 것을 확인할 수 있습니다.
+
+다음으로 AR(2)모형을 살펴보도록 하겠습니다.
+
+```{r}
+AR_2 = arima.sim(model = list(order=c(2,0,0), ar = c(0.5,-0.45)), n = 1000, mean = 0.6)
+plot(AR_2 , main = 'AR(2)')
+```
+
+```{r}
+acf(AR_2, main = 'ACF of AR(2)')
+```
+
+```{r}
+pacf(AR_2, main = 'PACF of AR(2)')
+```
+
+AR(2)모형도 마찬가지로 ACF는 지수적으로 감소하며, PACF도 시점 3부터 절단되는 것을 확인할 수 있습니다.
+
+다음으로 MA모형도 살펴보겠습니다. 우선 MA(1)과 MA(2)의 ACF/PACF를 한번에 확인해보겠습니다.
+
+```{r}
+par(mfrow=c(1,2))
+MA_1<-arima.sim(model=list(ma=0.8), n=1000) 
+plot(MA_1, main="MA(1)")
+MA_2<-arima.sim(model=list(ma=c(-0.6,0.8)),n=1000)
+plot(MA_2, main="MA(2)")
+```
+
+```{r}
+par(mfrow=c(1,2))
+acf(MA_1, main = 'ACF of MA(1)')
+acf(MA_2, main = 'ACF of MA(2)')
+```
+
+```{r}
+par(mfrow=c(1,2))
+pacf(MA_1, main = 'PACF of MA(1)')
+pacf(MA_2, main = 'PACF of MA(2)')
+```
+
+MA 모형도 마찬가지로 ACF는 q+1차부터 절단되며 PACF는 지수적으로 감소하는 것을 알 수 있습니다.
+
+#### 2-2. ARMA
+
+AR모형과 MA모형에 대해 살펴보았으니, 이어서 ARMA 모형의 ACF/PACF도 살펴보도록 하겠습니다. 
+똑같이 arima.sim()함수를 사용하면 ARMA 과정을 따르는 데이터를 생성할 수 있습니다. 가장 간단한 ARMA(1,1)과정을 따르는 데이터를 생성하겠습니다.
+```{r}
+ARMA11 <- arima.sim(model = list(order = c(1, 0, 1), ar = 0.9, ma = .8), n = 1000)
+plot(ARMA11,main="ARMA(1,1)")
+```
+
+```{r}
+acf(ARMA11,main="ACF of ARMA(1,1)")
+```
+
+```{r}
+pacf(ARMA11,main="PACF of ARMA(1,1)")
+```
+
+ACF와 PACF 둘다 지수적으로 감소하고 있음을 확인할 수 있습니다.
+
+### 3. 모형 적합
+
+지금부터는 직접 데이터를 모형에 적합시켜 보도록 하겠습니다.
+
+```{r}
+library(astsa)
+library(TSA)
+library(lmtest)
+```
+
+모델을 적합하기에 앞서, 새로운 데이터를 불러오도록 하겠습니다.
+사용할 데이터는 TSA library의 oil.price 데이터로, 1986년 01월 ~ 2006년 01월까지 월별 기름 가격 데이터입니다.
+데이터를 TS plot을 통해 간단히 살펴보겠습니다.
+
+```{r}
+data(oil.price)
+oil.price2 = oil.price[1:160] # 가시성을 위해 일부 자료만 사용
+ts.plot(oil.price2)
+```
+
+AR,MA,ARMA 모형은 정상 시계열 모형이기 때문에, 모형을 적합시키기 위해서는 먼저 데이터가 정상성을 만족하는지 확인해보아야 합니다. 
+
+```{r}
+kpss.test(oil.price2)
+```
+p value가 0.05보다 크기 때문에 귀무가설 '정상성을 만족한다'를 기각하지 못합니다. 따라서 이 데이터는 정상성을 만족합니다.
+
+또한, 백색잡음이라면 모델링을 할 필요가 없기 때문에, Ljung-Box test를 통해 백색잡음 검정을 해보도록 하겠습니다.
+
+```{r}
+Box.test(oil.price2, lag=10,type="Ljung-Box")
+```
+
+'백색잡음이다'라는 귀무가설을 기각하기 때문에 백색잡음이 아니라고 할 수 있으며, 이에 따라 모델링을 해야할 필요성이 있다고 판단할 수 있습니다.
+
+
+어떤 모형을 적합할지 정하기 위해, 먼저 ACF와 PACF를 보고 사용할 모형과 모형의 차수를 결정하도록 하겠습니다.
+
+```{r}
+acf(oil.price2)
+pacf(oil.price2)
+```
+
+ACF와 PACF를 봤을 때, ACF가 지수적으로 감소하고, PACF가 3시점부터 절단되는 것을 확인할 수 있기에, AR(2)모형이 적절하다고 판단할 수 있습니다. 그렇기에 저희는 AR(2)모형을 우선 잠정모형으로 선택하도록 하겠습니다.
+
+arima 함수를 사용해서 모형에 적합시킬 수 있으며, order인자를 통해 차수를 설정해 줄 수 있습니다. 차수의 순서는 (p,d,q)이고, 여기서 d는 차분인데 AR,MA,ARMA 모형은 차분을 하지 않기 때문에 d = 0으로 설정하겠습니다. 
+
+```{r}
+fit<-arima(oil.price2, order=c(2,0,0)) # AR(2) 모형 적합
+summary(fit)
+```
+
+위의 결과를 보고 AR(2)식을 써보자면 X_{t}=19.1463+1.3267X_{t-1}-0.4835X_{t-2}+Z_t 가 됩니다.
+
+다음으로 추정한 모수가 유의한지 확인해보도록 하겠습니다. coeftest 함수를 통해 추정한 모수(계수)들이 유의한지 확인할 수 있습니다.
+
+```{r}
+coeftest(fit)
+```
+
+모든 모수가 유의하다는 결과를 확인할 수 있습니다.
+
+다음으로 잔차가 백색잡음인지 확인해 보겠습니다.
+
+```{r}
+ts.plot(resid(fit),main="잔차의 플랏", ylab="residual")
+```
+
+```{r}
+acf(resid(fit),main="잔차의 ACF")
+pacf(resid(fit),main="잔차의 PACF")
+```
+
+ACF와 PACF가 모두 신뢰구간 내에 존재하기 때문에 자기상관이 존재하지 않으며, 이에 따라 잔차가 백색잡음임을 확인할 수 있습니다. 정확한 검정을 위해 Ljung-BOx 검정도 진행해보도록 하겠습니다.
+
+```{r}
+Box.test(resid(fit),lag=10,type="Ljung-Box") 
+```
+
+백색잡음이라는 귀무가설을 채택합니다. 
+
+저희가 선정한 모형이 과연 다른 모형보다 적합한지를 확인하기 위해 과대적합을 통해 모형을 서로 비교해보겠습니다.
+과대적합이란, 일부러 추정해야할 모수를 늘려 그 모형이 잠정모형보다 적합한지를 판단해보는 방법입니다. AR(3)모형과 ARMA(2,1)모형의 모수와 AIC를 AR(2)모형과 비교해보도록 하겠습니다.
+
+```{r}
+fit2<-arima(oil.price2, order=c(3,0,0)) #AR(3)
+fit3<-arima(oil.price2, order=c(2,0,1)) #ARMA(2,1)
+```
+
+```{r}
+summary(fit) # AR(2)
+```
+
+
+```{r}
+summary(fit2) # AR(3)
+```
+
+
+```{r}
+summary(fit3) #ARMA(2,1)
+```
+
+세 모형의 AIC를 확인해본 결과, 저희가 적합한 AR(2)의 AIC가 가장 작은 것을 확인할 수 있습니다.
+
+```{r}
+coeftest(fit2)
+coeftest(fit3)
+```
+
+두 모델에서는 유의하지 않은 모수가 존재하며, 결과적으로 AR(2)모형이 가장 적합하다는 것을 확인할 수 있습니다.
+
+### 4. 모형적합 2
+
+다른 방법으로 데이터를 모형에 적합해 보도록 하겠습니다. auto.arima 함수는 AIC와 BIC를 사용해 최적의 모형과 차수를 찾아줍니다.
+
+```{r}
+auto.arima(oil.price2)
+```
+
+ARIMA(2,0,0)이 best model로 산출되었습니다. 즉, AR(2) 모형이 가장 적절한 것을 확인할 수 있습니다.
+
+```{r}
+fit = Arima(oil.price2, c(2,0,0))
+plot(forecast(fit, h=24))
+```
+
+forecast 함수를 이용해 적합된 모형을 통해 예측을 진행할 수 있습니다. h 인자는 몇 step 앞을 예상할지에 대한 인자입니다!
+
+sarima.for(data, n.ahead, p,d,q) 함수를 사용해서도 예측을 진행할 수 있습니다. 여기서 n.ahead는 몇 시점 뒤를 예측할지 정해주는 인자입니다.
+
+```{r}
+sarima.for(oil.price2, 25, 2,0,0)
+```
+
